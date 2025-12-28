@@ -1,0 +1,144 @@
+#!/bin/sh
+#
+# Root filesystem overlay control and install script
+# Adapted for Armbian (uses armbianEnv.txt instead of cmdline.txt)
+#
+# Copyright (C) 2014 Pavel Pisa <ppisa@pikron.com>
+# Armbian adaptation for Stratux project
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+
+modify_boot_config()
+{
+    # Armbian uses /boot/armbianEnv.txt for boot parameters
+    BOOT_ENV="/boot/armbianEnv.txt"
+
+    if [ ! -e "${BOOT_ENV}" ]; then
+        # Try extlinux.conf as fallback
+        BOOT_ENV="/boot/extlinux/extlinux.conf"
+    fi
+
+    if [ ! -e "${BOOT_ENV}" ]; then
+        echo "Boot configuration file not found"
+        exit 1
+    fi
+
+    if [ ! -w /boot ]; then
+        remount_boot_ro=yes
+        mount -o remount,rw /boot || exit 1
+    fi
+
+    case "$1" in
+        install)
+            # For Armbian, we set extraargs to include init-overlay
+            if grep -q "^extraargs=" "${BOOT_ENV}"; then
+                # Update existing extraargs
+                if ! grep -q "init=/sbin/init-overlay" "${BOOT_ENV}"; then
+                    sed -i 's/^extraargs=\(.*\)/extraargs=\1 ro init=\/sbin\/init-overlay/' "${BOOT_ENV}"
+                fi
+            else
+                # Add extraargs line
+                echo "extraargs=ro init=/sbin/init-overlay" >> "${BOOT_ENV}"
+            fi
+            ;;
+        uninstall)
+            sed -i 's/ init=\/sbin\/init-overlay//g' "${BOOT_ENV}"
+            sed -i 's/ ro / /g' "${BOOT_ENV}"
+            ;;
+    esac
+
+    if [ -n "$remount_boot_ro" ]; then
+        mount -o remount,ro /boot
+    fi
+}
+
+overlay_is_active()
+{
+    if [ -e /overlay/robase/overlay ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+if [ $# -eq 0 ]; then
+    echo "overlayctl [status|enable|disable|lock|unlock|install|uninstall]"
+    exit 0
+fi
+
+if overlay_is_active; then
+    overlay_active="yes"
+    overlay_base="/overlay/robase/"
+else
+    overlay_active="no"
+    overlay_base="/"
+fi
+
+overlay_disable_file="$overlay_base""overlay/disable"
+
+case "$1" in
+    status)
+        echo -n "overlay is "
+        if [ "$overlay_active" = "yes" ]; then
+            echo "active"
+        else
+            echo "inactive"
+        fi
+        echo -n "overlay "
+        if [ -e "$overlay_disable_file" ]; then
+            echo -n "disabled"
+        else
+            echo -n "enabled"
+        fi
+        echo " for next boot"
+        ;;
+
+    enable)
+        if [ -e "$overlay_disable_file" ]; then
+            if [ -w "$overlay_base/overlay" ]; then
+               rm "$overlay_disable_file"
+            else
+               mount -o remount,rw "$overlay_base"
+               rm "$overlay_disable_file"
+               mount -o remount,ro "$overlay_base"
+            fi
+        fi
+        ;;
+
+    disable)
+        if [ ! -e "$overlay_disable_file" ]; then
+            if [ -w "$overlay_base/overlay" ]; then
+               echo 1 >"$overlay_disable_file"
+            else
+               mount -o remount,rw "$overlay_base"
+               echo 1 >"$overlay_disable_file"
+               mount -o remount,ro "$overlay_base"
+            fi
+        fi
+        ;;
+
+    lock)
+        mount -o remount,ro "$overlay_base"
+        ;;
+
+    unlock)
+        mount -o remount,rw "$overlay_base"
+        ;;
+
+    install)
+        modify_boot_config install
+        mkdir -p /overlay
+        ;;
+
+    uninstall)
+        modify_boot_config uninstall
+        ;;
+
+    *)
+        echo "overlayctl: unknown option"
+        exit 1
+        ;;
+esac
