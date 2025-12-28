@@ -1,7 +1,8 @@
 export STRATUX_HOME := /opt/stratux/
 export DEBPKG_BASE := /tmp/dpkg-stratux/stratux
 export DEBPKG_HOME := /tmp/dpkg-stratux/stratux/opt/stratux
-VERSIONSTR := $(shell ./scripts/getversion.sh)
+#VERSIONSTR := $(shell ./scripts/getversion.sh)
+VERSIONSTR := 2.0-radxa
 ARCH = $(shell ./scripts/getarch.sh)
 
 LFLAGS=-X main.stratuxVersion=$(VERSIONSTR) -X main.stratuxBuild=`git log -n 1 --pretty=%H`
@@ -30,7 +31,7 @@ fancontrol: fancontrol_main/*.go common/*.go
 	go build $(BUILDINFO) -o fancontrol -p 4 ./fancontrol_main/
 
 xdump1090:
-	cd dump1090 && make BLADERF=no
+	cd dump1090 && make BLADERF=no CFLAGS="-O3 -g -Wno-calloc-transposed-args"
 
 libdump978.so: dump978/*.c dump978/*.h
 	cd dump978 && make lib
