@@ -1,6 +1,6 @@
 # Image for building Stratux
 #
-FROM debian:bookworm
+FROM debian:trixie
 
 # file and nano are nice to have
 RUN apt-get update \
@@ -12,15 +12,11 @@ RUN apt-get update \
   && apt-get -y install ncurses-dev \
   && apt-get -y install golang-go \
   && apt-get -y install wget \
-  && apt-get -y install libusb-1.0-0-dev
-
-RUN cd /tmp \
-    && wget https://github.com/stratux/rtlsdr/releases/download/v1.0/librtlsdr0_2.0.2-2_arm64.deb \
-    && dpkg -i librtlsdr0_2.0.2-2_arm64.deb
-
-RUN cd /tmp \
-    && wget https://github.com/stratux/rtlsdr/releases/download/v1.0/librtlsdr-dev_2.0.2-2_arm64.deb \
-    && dpkg -i librtlsdr-dev_2.0.2-2_arm64.deb
+  && apt-get -y install libusb-1.0-0-dev \
+  && apt-get -y install pkg-config \
+  && apt-get -y install librtlsdr0 \
+  && apt-get -y install librtlsdr-dev \
+  && apt-get -y install build-essential
 
 # specific to debian, ubuntu images come with user 'ubuntu' that is uid 1000
 ENV USERNAME="stratux"
