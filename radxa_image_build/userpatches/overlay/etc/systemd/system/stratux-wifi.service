@@ -1,0 +1,17 @@
+[Unit]
+Description=Stratux WiFi AP
+After=sys-subsystem-net-devices-wlan0.device
+Requires=sys-subsystem-net-devices-wlan0.device
+
+[Service]
+Type=simple
+ExecStartPre=/sbin/ip link set wlan0 up
+ExecStart=/sbin/wpa_supplicant -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant_ap.conf
+ExecStartPost=/bin/sleep 2
+ExecStartPost=/sbin/ip addr flush dev wlan0
+ExecStartPost=/sbin/ip addr add 192.168.10.1/24 dev wlan0
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

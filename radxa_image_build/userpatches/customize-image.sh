@@ -5,9 +5,6 @@
 #
 # Arguments: $RELEASE $LINUXFAMILY $BOARD $BUILD_DESKTOP
 #
-# Note: Files in userpatches/overlay/ are automatically copied to the
-# image root filesystem by Armbian before this script runs.
-#
 
 RELEASE=$1
 LINUXFAMILY=$2
@@ -19,6 +16,23 @@ echo "Release: ${RELEASE}"
 echo "Linux Family: ${LINUXFAMILY}"
 echo "Board: ${BOARD}"
 
+#
+# Copy overlay files from /tmp/overlay to root filesystem
+# Use rsync to handle symlinked directories like /sbin -> /usr/sbin
+#
+echo "Copying overlay files from /tmp/overlay..."
+if [ -d /tmp/overlay ]; then
+    # Remove dangling symlinks before copying
+    rm -f /etc/motd 2>/dev/null || true
+
+    cp -rv /tmp/overlay/etc/* /etc/ 2>/dev/null || true
+    cp -rv /tmp/overlay/root/.* /root/ 2>/dev/null || true
+    cp -v /tmp/overlay/tmp/* /tmp/ 2>/dev/null || true
+else
+    echo "ERROR: /tmp/overlay not found!"
+    exit 1
+fi
+
 # Update package lists
 apt-get update
 
@@ -27,8 +41,11 @@ apt-get update
 #
 echo "Installing required packages..."
 apt-get install -y \
+    ifupdown \
+    iw \
+    wireless-tools \
+    wpasupplicant \
     dnsmasq \
-    ifplugd \
     librtlsdr0 \
     librtlsdr-dev \
     libusb-1.0-0 \
@@ -39,7 +56,9 @@ apt-get install -y \
     libncurses6 \
     build-essential \
     autoconf \
+    automake \
     libtool \
+    pkg-config \
     git
 
 #
@@ -79,10 +98,13 @@ systemctl disable apt-daily.timer 2>/dev/null || true
 systemctl disable apt-daily-upgrade.timer 2>/dev/null || true
 systemctl disable man-db.timer 2>/dev/null || true
 
-# Configure ifplugd for eth0 DHCP on cable plug
-if [ -f /etc/default/ifplugd ]; then
-    sed -i -e 's/INTERFACES=""/INTERFACES="eth0"/g' /etc/default/ifplugd
-fi
+# Disable systemd-networkd (conflicts with ifupdown)
+systemctl disable systemd-networkd 2>/dev/null || true
+systemctl mask systemd-networkd 2>/dev/null || true
+
+# Disable systemd-resolved (conflicts with dnsmasq on port 53)
+systemctl disable systemd-resolved 2>/dev/null || true
+systemctl mask systemd-resolved 2>/dev/null || true
 
 # Generate SSH host keys at build time (faster first boot)
 ssh-keygen -A -v
@@ -95,20 +117,17 @@ systemctl disable regenerate_ssh_host_keys 2>/dev/null || true
 apt-get remove -y network-manager 2>/dev/null || true
 
 #
-# Set up overlay filesystem scripts (copied from userpatches/overlay/)
-#
-echo "Setting up overlay filesystem..."
-chmod +x /sbin/init-overlay /sbin/overlayctl 2>/dev/null || true
-chmod +x /etc/rc.local 2>/dev/null || true
-/sbin/overlayctl install || true
-touch /var/grow_root_part
-mkdir -p /overlay/robase
-
-#
 # Enable CPU frequency limit for EMI reduction
 #
 echo "Enabling CPU frequency limit (1104 MHz max)..."
 systemctl enable cpu-frequency-limit.service
+
+#
+# Enable Stratux WiFi AP services
+#
+echo "Enabling Stratux WiFi AP..."
+systemctl enable stratux-wifi.service
+systemctl enable stratux-dnsmasq.service
 
 #
 # Install Stratux package
@@ -131,6 +150,11 @@ touch /boot/.stratux-first-boot
 echo "stratux" > /etc/hostname
 sed -i 's/radxa-zero3/stratux/g' /etc/hosts 2>/dev/null || true
 
+#
+# Disable first-run wizard (headless appliance)
+#
+rm -f /root/.not_logged_in_yet
+
 # Set keyboard layout to US
 if [ -f /etc/default/keyboard ]; then
     sed -i '/^XKBLAYOUT/s/".*"/"us"/' /etc/default/keyboard
@@ -143,21 +167,21 @@ echo -e "\n/dev/sda1             /var/log        auto    defaults,nofail,noatime
 # Minimize image size
 #
 echo "Minimizing image size..."
-apt-get purge -y \
-    gcc g++ cpp cpp-12 \
-    git git-man \
-    gdb \
-    strace \
-    build-essential \
-    autoconf \
-    libtool \
-    make \
-    m4 \
-    manpages manpages-dev man-db \
-    2>/dev/null || true
-
-apt-get autoremove -y
 apt-get clean
 rm -rf /var/lib/apt/lists/*
+
+# Verify WiFi modules are present
+echo "Verifying WiFi kernel modules..."
+if ls /lib/modules/*/updates/dkms/aic8800*.ko 2>/dev/null; then
+    echo "AIC8800 WiFi modules present"
+else
+    echo "WARNING: AIC8800 WiFi modules may be missing!"
+fi
+
+#
+# Enable read-only root filesystem with overlayroot
+#
+echo "Enabling read-only root filesystem..."
+armbian-config --cmd ROO001
 
 echo "=== Stratux customization complete ==="

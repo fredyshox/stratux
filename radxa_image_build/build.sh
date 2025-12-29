@@ -45,9 +45,11 @@ fi
 
 # Copy DEB package to userpatches for installation during image build
 DEB_NAME=$(cd "${ARMBIAN_DIR}/stratux" && ls -1t *.deb | head -1)
+STRATUX_VERSION=$(echo "${DEB_NAME}" | sed -n 's/stratux_\([^_]*\)_.*/\1/p')
 mkdir -p "${SCRIPT_DIR}/userpatches/overlay/tmp"
 cp "${ARMBIAN_DIR}/stratux/${DEB_NAME}" "${SCRIPT_DIR}/userpatches/overlay/tmp/"
 echo "Stratux package: ${DEB_NAME}"
+echo "Stratux version: ${STRATUX_VERSION}"
 
 # Copy userpatches to Armbian build directory
 echo "Copying userpatches..."
@@ -60,13 +62,14 @@ chmod +x "${ARMBIAN_DIR}/userpatches/customize-image.sh"
 echo "Starting Armbian build..."
 cd "${ARMBIAN_DIR}"
 
-/opt/homebrew/bin/bash ./compile.sh \
+./compile.sh \
     BOARD="${BOARD}" \
     BRANCH="${BRANCH}" \
     RELEASE="${RELEASE}" \
     BUILD_MINIMAL="${BUILD_MINIMAL}" \
     BUILD_DESKTOP="${BUILD_DESKTOP}" \
     KERNEL_CONFIGURE="${KERNEL_CONFIGURE}" \
+    VENDOR="Stratux-Armbian" \
     COMPRESS_OUTPUTIMAGE="sha,img"
 
 echo "=== Build complete ==="
